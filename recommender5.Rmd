@@ -1,0 +1,619 @@
+---
+title: "Player Performance Estimation using AI Collaborative Filtering"
+author: "Tinniam V Ganesh"
+date: "15/05/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+
+## 1. Introduction 
+Often times before crucial matches, or in general, we would like to know the performance of a batsman against a bowler or vice-versa, but we may not have the data. We generally have data where different batsmen would have faced different sets of bowlers with certain performance data like ballsFaced, totalRuns,fours, sixes, strike rate and timesOut. Similarly different bowlers would have performance figures(deliveries, runsConceded, economyRate and wicketTaken) against different sets of batsmen. We will never have the data for all batsmen against all bowlers. However, it would be good estimate the performance of batsmen against a bowler, even though we do not have the performance data. This could be done using collaborative filtering which identifies and computes based on the similarity between batsmen vs bowlers & bowlers vs batsmen.
+
+This post shows an approach whereby we can estimate a batsman’s performance against bowlers even though the batsman may not have faced those bowlers, based on his/her performance against other bowlers. It also estimates the performance of bowlers against batsmen using the same approach. This is based on the recommender algorithm which is used to recommend products to customers based on their rating on other products.
+
+This idea came to me while generating the performance of batsmen vs bowlers & vice-versa for 2 IPL teams in this IPL 2022 with my Shiny app [GooglyPlusPlus](https://gigadom.in/2022/04/03/ipl-2022-near-real-time-analytics-with-googlyplusplus/). I found that there were some batsmen for which there was no data against certain bowlers, probably because they are playing for the first time in their team or because they were new. While pondering on this problem, I realized that this problem formulation is similar to the problem formulation for the famous Netflix movie recommendation problem, in which user’s ratings for certain movies are known and based on these ratings, the recommender engine can generate ratings for movies not yet seen.
+
+This post estimates a player's (batsman/bowler) using the recommender engine
+This post is based on R package [recommenderlab](https://cran.r-project.org/web/packages/recommenderlab/vignettes/recommenderlab.pdf)
+
+"Michael Hahsler (2021). recommenderlab: Lab for Developing and
+Testing Recommender Algorithms. R package version 0.2-7.
+https://github.com/mhahsler/recommenderlab"
+
+**Note 1:** Thw data for this analysis is taken from [Cricsheet](https://cricsheet.org/) after being processed by my R package [yorkr](https://cran.r-project.org/web/packages/yorkr/index.html).
+
+You can also read this post in RPubs at [Player Performance Estimation using AI Collaborative Filtering](https://rpubs.com/tvganesh/902578)
+
+A PDF copy of this post is available at [Player Performance Estimation using AI Collaborative Filtering.pdf](https://drive.google.com/file/d/1mg0cttg6otyKd0LZ8VYePby9kqBqR249/view?usp=sharing)
+
+You can download this R Markdown file and the associated data and perform the analysis yourself using any other 
+recommender engine from Github at [playerPerformanceEstimation](https://github.com/tvganesh/playerPerformanceEstimation)
+
+## Problem statement
+In the table below we see a set of bowlers vs a set of batsmen and the number of times the bowlers got these batsmen out.
+By knowing the performance of the bowlers against some of the batsmen we can use collaborative filter to determine the missing values. This is done using the recommender engine.
+ 
+The Recommender Engine works as follows. Let us say that there are feature vectors $x^1$, $x^2$ and $x^3$  for the 3 bowlers which identify the characteristics of these bowlers ("fast", "lateral drift through the air", "movement off the pitch"). Let each batsman be identified by parameter vectors $\theta^1$, $theta^2$ and so on
+
+For e.g. consider the following table
+![Bowler Features](bowlerTypes.png)
+
+Then by assuming an initial estimate for the parameter vector $\theta$ and the feature vector $x$ we can formulate this as an optimization problem which tries to minimize the error for $\theta^T*x$. This can work very well as the algorithm can determine features which cannot be captured. So for e.g. some particular bowler may have very impressive figures. This could be due to some aspect of the bowling which cannot be captured by the data for e.g. let's say the bowler uses the 'scrambled seam' when he is most effective, with a slightly different arc to the flight. Though the algorithm cannot identify the feature as we know it, but the ML algorithm should pick up intricacies which cannot be captured in data.
+
+Hence the algorithm can be quite effective.
+
+**Note:** The recommender lab performance is not very good and the Mean Square Error is quite high. Also, the ROC and AUC curves show that not in aLL cases the algorithm is doing a clean job of separating the True positives (TPR) from the False Positives (FPR)
+ 
+ **Note:** This is similar to the recommendation problem
+ ![Movie Recommendation](movies.png)
+ 
+The collaborative optimization object can be considered as a minimization of both $\theta$ and the features $x$ and can be written as
+
+J($x^{(1)},x^{(2)},..x^{(n_{u})}$, $\theta^{(1)},\theta^{(2)},..,\theta^{(n_{m})}$}= 1/2$\sum(\theta^{j})^{T}x^{i}- y^{(i,j)})^{2} + \lambda\sum\sum (x_{k}^{i})^{2} + \lambda\sum\sum (_\theta{k}^{j})^{2}$
+
+ The collaborative filtering algorithm can be summarized as follows
+ 
+ 1. Initialize $\theta^1, \theta^2... \theta^{n_{u}}$ and the set of features be $x^1, x^2, ... ,x^{n_{m}}$ to small random values
+ 2. Minimize J($\theta^1, \theta^2... \theta^{n_{u}}$,$x^1, x^2, ... ,x^{n_{m}}$) using gradient descent. For every
+ j=1,2, ...$n_{u}$, i= 1,2,.., $n_{m}$
+ 
+ $x_{k}^{i}$ := $x_{k}^{i}$ - $\alpha$ ( $\sigma$ $(\theta^j)^T)x^i - y^(i,j)\theta_{k}^{j} + \lambda x_{k}^i$
+ <br>
+ &
+ <br>
+ $\theta_{k}^{i}$ := $\theta_{k}^{i}$ - $\alpha$ ( $\sigma$ $(\theta^j)^T)x^i - y^(i,j)\theta_{k}^{j} + \lambda x_{k}^i$ 
+
+3. Hence for a batsman with parameters $\theta$ and a bowler with (learned) features x, predict the "times out" for
+the player where the value is not known using $\theta^Tx$
+
+The above derivation for the recommender problem is taken from Machine Learning by Prof Andrew Ng at Coursera from the lecture [Collaborative filtering](https://www.coursera.org/learn/machine-learning/lecture/Rhg6r/problem-formulation)
+
+There are 2 main types of Collaborative Filtering(CF) approaches
+
+1. **User based Collaborative Filtering**
+User-based CF is a memory-based algorithm which tries to mimics word-of-mouth by analyzing rating data from many individuals. The assumption is that users with similar preferences will rate items similarly.
+2. **Item based Collaborative Filtering**
+Item-based CF is a model-based approach which produces recommendations based on the relationship between items inferred from the rating matrix. The assumption
+behind this approach is that users will prefer items that are similar to other items they like.
+
+## 1a. A note on ROC and Precision-Recall curves
+A small note on interpreting ROC & Precision-Recall curves in the post below
+**ROC Curve:** The ROC curve plots the True Positive Rate (TPR) against the False Positive Rate (FPR). Ideally the TPR should increase faster than the FPR and the AUC (area under the curve) should be close to 1
+
+![AUC](auc.png){width=30%}
+
+
+**Precision-Recall:** The precision-recall curve shows the tradeoff between precision and recall for different threshold. A high area under the curve represents both high recall and high precision, where high precision relates to a low false positive rate, and high recall relates to a low false negative rate
+
+![Precision-Recall](prec-recall.png){width=30%}
+
+```{r message=FALSE,warning=FALSE}
+library(reshape2)
+library(dplyr)
+library(ggplot2)
+library(recommenderlab)
+library(tidyr)
+
+load("recom_data/batsmenVsBowler20_22.rdata")
+```
+
+## 2. Define recommender lab helper functions
+Helper functions for the RMarkdown notebook are created
+	•	eval - Gives details of RMSE, MSE and MAE of ML algorithm
+	•	evalRecomMethods - Evaluates different recommender methods and plot the ROC and Precision-Recall curves
+
+
+```{r messages=FALSE, warnings=FALSE}
+# This function returns the error for the chosen algorithm and also predicts the estimates
+# for the given data
+eval <- function(data, train1, k1,given1,goodRating1,recomType1="UBCF"){
+  set.seed(2022)
+  e<- evaluationScheme(data,
+                       method = "split",
+                       train = train1,
+                       k = k1,
+                       given = given1,
+                       goodRating = goodRating1)
+  
+  r1 <- Recommender(getData(e, "train"), recomType1)
+  print(r1)
+  
+  p1 <- predict(r1, getData(e, "known"), type="ratings")
+  print(p1)
+  
+  error = calcPredictionAccuracy(p1, getData(e, "unknown"))
+  
+  print(error)
+  p2 <- predict(r1, data, type="ratingMatrix")
+  p2
+}
+
+
+# This function will evaluate the different recommender algorithms and plot the AUC and ROC curves
+evalRecomMethods <- function(data,k1,given1,goodRating1){
+  set.seed(2022)
+  e<- evaluationScheme(data,
+                       method = "cross",
+                       k = k1,
+                       given = given1,
+                       goodRating = goodRating1)
+  
+  models_to_evaluate <- list(
+    `IBCF Cosinus` = list(name = "IBCF", 
+                          param = list(method = "cosine")),
+    `IBCF Pearson` = list(name = "IBCF", 
+                          param = list(method = "pearson")),
+    `UBCF Cosinus` = list(name = "UBCF",
+                          param = list(method = "cosine")),
+    `UBCF Pearson` = list(name = "UBCF",
+                          param = list(method = "pearson")),
+    `Zufälliger Vorschlag` = list(name = "RANDOM", param=NULL)
+  )
+  
+  n_recommendations <- c(1, 5, seq(10, 100, 10))
+  list_results <- evaluate(x = e, 
+                           method = models_to_evaluate, 
+                           n = n_recommendations)
+  plot(list_results, annotate=c(1,3), legend="bottomright")
+  plot(list_results, "prec/rec", annotate=3, legend="topleft")
+}
+```
+
+## 3. Batsman performance estimation
+The section below regenerates the performance for batsmen based on incomplete data for the different fields
+in the data frame namely balls faced, fours, sixes, strike rate, times out. The recommender lab allows
+one to test several different algorithms all at once namely
+
+a. User based - Cosine similarity method, Pearson similarity
+b. Item based - Cosine similarity method, Pearson similarity
+c. Popular
+d. Random
+e. SVD
+and a few others
+
+## 3a. Batting dataframe
+```{r}
+head(df)
+```
+## 3b Data set and data preparation
+For this analysis the data from [Cricsheet](https://cricsheet.org/) has been processed using my R package
+[yorkr](https://cran.r-project.org/web/packages/yorkr/index.html) to obtain the following 2 data sets
+- batsmenVsBowler - This dataset will contain the performance of the batsmen against the bowler and will capture a) ballsFaced b) totalRuns c) Fours d) Sixes e) SR f) timesOut
+- bowlerVsBatsmen - This data set will contain the performance of the bowler against the difference batsmen and will include a) deliveries b) runsConceded c) EconomyRate d) wicketsTaken
+
+Obviously many rows/columns will be empty
+
+This is a large data set and hence I have filtered for the period > Jan 2020 and < Dec 2022 which gives
+2 datasets
+a) batsmanVsBowler20_22.rdata
+b) bowlerVsBatsman20_22.rdata
+
+I also have 2 other datasets of all batsmen and bowlers in these 2 dataset in the files
+c) all-batsmen20_22.rds
+d) all-bowlers20_22.rds
+
+You can download the data and this RMarkdown notebook from Github at [PlayerPerformanceEstimation][https://github.com/tvganesh/playerPerformanceEstimation]
+
+Feel free to download and analyze the data and use any recommendation engine you choose
+
+## 3c. Exploratory analysis
+Initially an exploratory analysis is done on the data
+```{r }
+df3 <- select(df, batsman1,bowler1,timesOut)
+df6 <- xtabs(timesOut ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+print(df8[1:10,1:10])
+```
+
+The dots below represent data for which there is no performance data. These cells need to be estimated by the algorithm
+```{r}
+set.seed(2022)
+r <- as(df8,"realRatingMatrix")
+getRatingMatrix(r)[1:15,1:15]
+
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:15,1:15]
+
+# Get the summary of the data
+summary(getRatings(r0))
+
+# Normalize the data
+r0_m <- normalize(r0)
+getRatingMatrix(r0_m)[1:15,1:15]
+```
+
+## 4. Create a visual representation of the rating data before and after the normalization
+The histograms show the bias in the data is removed after normalization
+```{r rating,cache=TRUE,fig.width=10}
+r0=r[(m=rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:15,1:10]
+#Plot ratings
+image(r0, main = "Raw Ratings")
+
+#Plot normalized ratings
+r0_m <- normalize(r0)
+getRatingMatrix(r0_m)[1:15,1:15]
+image(r0_m, main = "Normalized Ratings")
+
+set.seed(1234)
+hist(getRatings(r0), breaks=25)
+hist(getRatings(r0_m), breaks=25)
+```
+
+## 4a. Data for analysis
+The data frame of the batsman vs bowlers from the period 2020 -2022 is read as a dataframe. To
+remove rows with very low ratings(timesOut, SR etc), the rows are filtered so that there are at 
+least more 10 values in the row. For the player estimation the dataframe is converted into a wide-format as a matrix (m x n) of batsman x bowler with each of the columns of the dataframe i.e. timesOut, SR, fours or sixes. These different matrices can be considered as a rating matrix for estimation.
+
+A similar approach is taken for estimating bowler performance. Here a wide form matrix (m x n) of bowler x batsman is created for each of the columns of deliveries, runsConceded, ER, wicketsTaken
+
+## 5. Batsman's times Out
+The code below estimates the number of times the batsmen would lose his/her wicket to the bowler. As discussed
+in the algorithm above, the recommendation engine will make an initial estimate features for the bowler and an initial
+estimate for the parameter vector for the batsmen. Then using gradient descent the recommender engine will
+determine the feature and parameter values such that the over Mean Squared Error is minimum
+
+From the plot for the different algorithms it can be seen that UBCF performs the best. However the AUC & ROC curves
+are not optimal and the AUC> 0.5
+
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df, batsman1,bowler1,timesOut)
+df6 <- xtabs(timesOut ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+r <- as(df8,"realRatingMatrix")
+# Filter only rows where the row count is > 10
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+
+```
+
+```{r timesOut,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+# Evaluate the different plotting methods
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+#Evaluate the error
+a=eval(r0[1:dim(r0)[1]],0.8,k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+m=as(c,"data.frame")
+names(m) =c("batsman","bowler","TimesOut")
+```
+
+
+## 6. Batsman's Strike rate
+This section deals with the Strike rate of batsmen versus bowlers and estimates the values for those
+where the data is incomplete using UBCF method.
+
+Even here all the algorithms do not perform too efficiently. I did try out a few variations but
+could not lower the error (suggestions welcome!!)
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df, batsman1,bowler1,SR)
+df6 <- xtabs(SR ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+
+```
+
+```{r SR,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE, results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8, k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+n=as(c,"data.frame")
+names(n) =c("batsman","bowler","SR")
+```
+
+
+## 7.  Batsman's Sixes
+The snippet of code estimes the sixes of the batsman against bowlers. The ROC and AUC curve for UBCF looks a lot better
+here, as it significantly greater than 0.5
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df, batsman1,bowler1,sixes)
+df6 <- xtabs(sixes ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r sixes,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8, k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+o=as(c,"data.frame")
+names(o) =c("batsman","bowler","Sixes")
+```
+
+## 8.  Batsman's Fours
+The code below estimates 4s for the batsmen
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df, batsman1,bowler1,fours)
+df6 <- xtabs(fours ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r fours,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8, k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+p=as(c,"data.frame")
+names(p) =c("batsman","bowler","Fours")
+```
+
+## 9. Batsman's Total Runs
+The code below estimates the total runs that would have scored by the batsman against different bowlers
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df, batsman1,bowler1,totalRuns)
+df6 <- xtabs(totalRuns ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r totalRuns,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given1=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8, k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+q=as(c,"data.frame")
+names(q) =c("batsman","bowler","TotalRuns")
+```
+
+## 10.  Batsman's Balls Faced
+The snippet estimates the balls faced by batsmen versus bowlers
+
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df, batsman1,bowler1,ballsFaced)
+df6 <- xtabs(ballsFaced ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r ballsFaced,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8, k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+r=as(c,"data.frame")
+names(r) =c("batsman","bowler","BallsFaced")
+```
+
+
+## 11. Generate the Batsmen Performance Estimate
+This code generates the estimated dataframe with known and 'predicted' values
+```{r}
+a1=merge(m,n,by=c("batsman","bowler"))
+a2=merge(a1,o,by=c("batsman","bowler"))
+a3=merge(a2,p,by=c("batsman","bowler"))
+a4=merge(a3,q,by=c("batsman","bowler"))
+a5=merge(a4,r,by=c("batsman","bowler"))
+a6= select(a5, batsman,bowler,BallsFaced,TotalRuns,Fours, Sixes, SR,TimesOut)
+head(a6)
+```
+
+## 12. Bowler analysis
+Just like the batsman performance estimation we can consider the bowler's performances also for estimation. Consider
+the following table
+![Batsman Features](batsmenTypes.png)
+As in the batsman analysis, for every batsman a set of features like ("strong backfoot player", "360 degree player","Power hitter") can be estimated with a set of initial values. Also every bowler will have an associated parameter vector $\theta$.
+Different bowlers will have performance data for different set of batsmen. Based on the initial estimate of the features
+and the parameters, gradient descent can be used to minimize actual values {for e.g. wicketsTaken(ratings)}.
+```{r}
+load("recom_data/bowlerVsBatsman20_22.rdata")
+```
+
+## 12a. Bowler dataframe
+Inspecting the bowler dataframe
+```{r}
+head(df2)
+names(df2)
+```
+
+
+## 13. Balls bowled by bowler
+The below section estimates the balls bowled for each bowler. We can see that UBCF Pearson and UBCF Cosine both
+perform well
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df2, bowler1,batsman1,balls)
+df6 <- xtabs(balls ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r ballsBowled,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8,k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+s=as(c,"data.frame")
+names(s) =c("bowler","batsman","BallsBowled")
+```
+
+
+## 14. Runs conceded by bowler
+This section estimates the runs conceded by the bowler. The UBCF Cosinus algorithm performs the best with
+TPR increasing fastewr than FPR
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df2, bowler1,batsman1,runsConceded)
+df6 <- xtabs(runsConceded ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r runsConceded,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8,k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+t=as(c,"data.frame")
+names(t) =c("bowler","batsman","RunsConceded")
+```
+
+## 15. Economy Rate of the bowler
+This section computes the economy rate of the bowler. The performance is not all that good
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df2, bowler1,batsman1,ER)
+df6 <- xtabs(ER ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r er,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8,k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+u=as(c,"data.frame")
+names(u) =c("bowler","batsman","EconomyRate")
+```
+
+
+## 16. Wickets Taken by bowler
+The code below computes the wickets taken by the bowler versus different batsmen
+```{r cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE}
+df3 <- select(df2, bowler1,batsman1,wicketTaken)
+df6 <- xtabs(wicketTaken ~ ., df3)
+df7 <- as.data.frame.matrix(df6)
+df8 <- data.matrix(df7)
+df8[df8 == 0] <- NA
+
+
+r <- as(df8,"realRatingMatrix")
+r0=r[(rowCounts(r) > 10),]
+getRatingMatrix(r0)[1:10,1:10]
+summary(getRatings(r0))
+```
+
+```{r wicketsTaken,cache=TRUE,fig.width=10,messages=FALSE, warnings=FALSE,results=FALSE}
+evalRecomMethods(r0[1:dim(r0)[1]],k1=5,given=7,goodRating1=median(getRatings(r0)))
+```
+
+```{r}
+a=eval(r0[1:dim(r0)[1]],0.8,k1=5,given1=7,goodRating1=median(getRatings(r0)),"UBCF")
+b=round(as(a,"matrix")[1:10,1:10])
+c <- as(b,"realRatingMatrix")
+v=as(c,"data.frame")
+names(v) =c("bowler","batsman","WicketTaken")
+```
+
+## 17. Generate the  Bowler Performance estmiate
+The entire dataframe is regenerated with known and 'predicted' values
+```{r}
+r1=merge(s,t,by=c("bowler","batsman"))
+r2=merge(r1,u,by=c("bowler","batsman"))
+r3=merge(r2,v,by=c("bowler","batsman"))
+r4= select(r3,bowler, batsman, BallsBowled,RunsConceded,EconomyRate, WicketTaken)
+head(r4)
+```
+
+## 18. Conclusion
+
+This post showed an approach for performing the Batsmen Performance Estimate & Bowler Performance Estimate. The performance
+of the recommender engine could have been better. In any case, I think this approach will work for player estimation 
+provided the recommender algorithm is able to achieve a high degree of accuracy. This will be a good way to estimate as
+the algorithm will be able to determine features and nuances of batsmen and bowlers which cannot be captured by data.
+
+## References
+
+1. [Recommender Systems - Machine Learning by Prof Andrew Ng](https://www.coursera.org/learn/machine-learning/home/week/9)
+2. [recommenderlab: A Framework for Developing and Testing Recommendation Algorithms](https://cran.r-project.org/web/packages/recommenderlab/vignettes/recommenderlab.pdf)
+3. [ROC](https://scikit-learn.org/stable/auto_examples/model_selection/plot_roc.html#sphx-glr-auto-examples-model-selection-plot-roc-py)
+4.[Precision-Recall](https://scikit-learn.org/stable/auto_examples/model_selection/plot_precision_recall.html#sphx-glr-auto-examples-model-selection-plot-precision-recall-py)
+
+## Also see
+
+1. [Big Data 7: yorkr waltzes with Apache NiFi](https://gigadom.in/2020/05/23/big-data-7-yorkr-waltzes-with-apache-nifi/)
+2. [Benford’s law meets IPL, Intl. T20 and ODI cricket](https://gigadom.in/2020/10/15/benfords-law-meets-ipl-intl-t20-and-odi-cricket/)
+3. [Using Linear Programming (LP) for optimizing bowling change or batting lineup in T20 cricket](https://www.r-bloggers.com/2017/09/using-linear-programming-lp-for-optimizing-bowling-change-or-batting-lineup-in-t20-cricket/)
+4. [IPL 2022: Near real-time analytics with GooglyPlusPlus!!!](https://gigadom.in/2022/04/03/ipl-2022-near-real-time-analytics-with-googlyplusplus/)
+5. [Sixer](https://tvganesh.shinyapps.io/Sixer/)
+6. [Introducing cricpy:A python package to analyze performances of cricketers](https://gigadom.in/2018/10/28/introducing-cricpya-python-package-to-analyze-performances-of-cricketrs/)
+7. [The Clash of the Titans in Test and ODI cricket](https://gigadom.in/2019/03/15/the-clash-of-the-titans-in-test-and-odi-cricket/)
+8. [Cricketr adds team analytics to its repertoire!!!](https://gigadom.in/2019/06/10/cricketr-adds-team-analytics-to-its-repertoire/)
+9. [Informed choices through Machine Learning – Analyzing Kohli, Tendulkar and Dravid](https://gigadom.in/2014/12/12/informed-choices-through-machine-learning-analyzing-kohli-tendulkar-and-dravid/)
+10. [Big Data 6: The T20 Dance of Apache NiFi and yorkpy](https://gigadom.in/2020/03/20/big-data-6-the-t20-dance-of-apache-nifi-and-yorkpy/)
